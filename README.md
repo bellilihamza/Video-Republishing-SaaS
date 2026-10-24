@@ -1,121 +1,168 @@
-# RePublish Ã¢ Video Republishing SaaS
+# RePublish
 
-A production-ready SaaS application that allows users to automatically republish short videos from TikTok, Instagram, and Facebook to YouTube.
+RePublish is a video republishing SaaS for downloading short-form videos,
+processing them for YouTube Shorts, and publishing them through the YouTube
+Data API.
 
-## Architecture
-
-```
-sas/
-âââ frontend/     # Next.js 14 App Router (deploy to Vercel)
-âââ backend/      # Express.js API + BullMQ Workers (deploy to Railway/Render)
-âââ plans/        # Architecture documentation
-âââ docker-compose.yml
-```
+The application is organized as a Next.js frontend and an Express API with a
+BullMQ worker for asynchronous video processing.
 
 ## Features
 
-- ð **Google OAuth2** authentication with YouTube scope
-- ð¥ **Video downloading** via `yt-dlp` from TikTok, Instagram, Facebook
-- âï¸ **Video processing** via `FFmpeg` (trim, prepare for Shorts)
-- ð¤ **YouTube upload** via YouTube Data API v3
-- ð **Background jobs** with BullMQ + Redis (retry, parallel processing)
-- ðï¸ **Auto cleanup** of temp files after successful upload
-- ð **Dashboard** for managing jobs and connected accounts
+- Google OAuth2 sign-in with YouTube upload permissions
+- Video downloads through `yt-dlp`
+- FFmpeg-based trimming and video preparation
+- YouTube Data API v3 uploads
+- Background processing with BullMQ and Redis
+- MongoDB persistence for users, connected accounts, and jobs
+- Automatic temporary-file cleanup after processing
+- Dashboard views for accounts, jobs, and published videos
+- API security with Helmet, CORS, rate limiting, validation, and encrypted
+  OAuth tokens
+
+## Project structure
+
+```text
+.
+├── backend/       Express API and BullMQ worker
+├── frontend/      Next.js 14 App Router application
+├── plans/         Architecture and API documentation
+└── docker-compose.yml
+```
 
 ## Prerequisites
 
-- Node.js 18+
-- MongoDB Atlas account
-- Redis Cloud account (or local Redis)
-- Google Cloud project with YouTube Data API v3 enabled
-- `yt-dlp` installed on the server
-- `ffmpeg` installed on the server
+- Node.js 18 or newer
+- npm
+- Docker Desktop (recommended for local MongoDB and Redis)
+- FFmpeg available on the backend host
+- `yt-dlp` available on the backend host
+- A MongoDB database
+- A Redis instance
+- A Google Cloud project with the YouTube Data API v3 enabled
 
-## Quick Start
+## Local development
 
-### 1. Clone and install
+### 1. Install dependencies
 
 ```bash
-# Install backend dependencies
-cd backend && npm install
+cd backend
+npm install
 
-# Install frontend dependencies
-cd ../frontend && npm install
+cd ../frontend
+npm install
 ```
 
-### 2. Configure environment variables
+### 2. Start local infrastructure
+
+From the repository root:
 
 ```bash
-# Backend
+docker compose up -d
+```
+
+This starts MongoDB on `localhost:27017`, Redis on `localhost:6379`, and
+Redis Commander on `http://localhost:8081`.
+
+### 3. Configure environment variables
+
+Create local environment files from the provided examples:
+
+```bash
 cp backend/.env.example backend/.env
-# Edit backend/.env with your values
+cp frontend/.env.example frontend/.env.local
+```
+
+Update the values for MongoDB, JWT, encryption, Google OAuth, and the backend
+URL. The example files contain placeholders only; never commit real
+credentials.
+
+For Google OAuth, add the following redirect URI to the OAuth client:
+
+```text
+http://localhost:3000/api/auth/callback/google
+```
+
+### 4. Start the applications
+
+Run each process in a separate terminal:
+
+```bash
+# Backend API
+cd backend
+npm run dev
+
+# Video worker
+cd backend
+npm run worker
 
 # Frontend
-cp frontend/.env.example frontend/.env.local
-# Edit frontend/.env.local with your values
+cd frontend
+npm run dev
 ```
 
-### 3. Run with Docker Compose (local dev)
+The frontend is available at [http://localhost:3000](http://localhost:3000)
+and the API is available at [http://localhost:5000](http://localhost:5000).
+
+## Useful commands
+
+Run commands from the relevant package directory:
+
+| Area | Command | Purpose |
+| --- | --- | --- |
+| Backend | `npm run build` | Compile TypeScript |
+| Backend | `npm run typecheck` | Check types without emitting files |
+| Backend | `npm run lint` | Run ESLint |
+| Backend | `npm start` | Start the compiled API |
+| Backend | `npm run start:worker` | Start the compiled worker |
+| Frontend | `npm run build` | Create a production build |
+| Frontend | `npm run typecheck` | Check TypeScript types |
+| Frontend | `npm run lint` | Run Next.js linting |
+| Frontend | `npm start` | Serve the production build |
+
+## Configuration
+
+The complete configuration reference is maintained in:
+
+- [`backend/.env.example`](backend/.env.example)
+- [`frontend/.env.example`](frontend/.env.example)
+
+Important backend settings include:
+
+- `MONGODB_URI` and `REDIS_URL` for persistence and queues
+- `JWT_SECRET` and `ENCRYPTION_KEY` for application security
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for OAuth
+- `FRONTEND_URL` for CORS
+- `TEMP_DIR`, `DEFAULT_TRIM_DURATION`, and `MAX_TRIM_DURATION` for processing
+- `QUEUE_CONCURRENCY` and `JOB_TIMEOUT_MS` for worker behavior
+
+Use strong, unique values for production secrets. Generate an encryption key
+with:
 
 ```bash
-docker-compose up -d   # Starts MongoDB + Redis
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
-
-### 4. Start services
-
-```bash
-# Terminal 1: Backend API
-cd backend && npm run dev
-
-# Terminal 2: BullMQ Worker
-cd backend && npm run worker
-
-# Terminal 3: Frontend
-cd frontend && npm run dev
-```
-
-App runs at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
-
-## Google Cloud Setup
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project
-3. Enable **YouTube Data API v3**
-4. Configure **OAuth consent screen** (add `youtube.upload` scope)
-5. Create **OAuth 2.0 credentials** (Web application)
-6. Add authorized redirect URIs:
-   - `http://localhost:3000/api/auth/callback/google` (dev)
-   - `https://yourdomain.com/api/auth/callback/google` (prod)
 
 ## Deployment
 
-### Frontend â Vercel
+The frontend can be deployed to Vercel or another Next.js-compatible host.
+The backend API and worker should be deployed as separate long-running
+services with access to the same MongoDB and Redis instances. FFmpeg and
+`yt-dlp` must be installed in the backend and worker runtime.
 
-```bash
-cd frontend
-vercel deploy
-```
+Before deploying:
 
-Set environment variables in Vercel dashboard.
+1. Set production environment variables in the hosting provider.
+2. Register the production Google OAuth callback URL.
+3. Restrict CORS with the production frontend URL.
+4. Run the backend and frontend build commands.
+5. Run both the API service and the BullMQ worker.
 
-### Backend â Railway
+## Documentation
 
-```bash
-# Connect your GitHub repo to Railway
-# Set environment variables in Railway dashboard
-# Deploy both services: api and worker
-```
-
-## Environment Variables
-
-See [`backend/.env.example`](backend/.env.example) and [`frontend/.env.example`](frontend/.env.example).
-
-## API Documentation
-
-See [`plans/architecture.md`](plans/architecture.md) for full API endpoint documentation.
+See [`plans/architecture.md`](plans/architecture.md) for the architecture,
+service responsibilities, and API endpoint documentation.
 
 ## License
 
-MIT
+This project is licensed under the MIT License.
